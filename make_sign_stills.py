@@ -4,6 +4,7 @@ import math
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import plac
 from scipy import signal
 from PIL import Image
 
@@ -46,12 +47,12 @@ def get_frame_difference(video):
     return x, y
 
 
-def plot_changes(video):
+def plot_changes(video, outputdir):
     """
     Returns a plot of the frame histogram differences over video frames
     (NB: not necessary for the analysis)
     """
-    plotname = video.split(".")[0]+"_plot_frames.png"
+    plotname = os.path.splitext(os.path.basename(video))[0]+"_plot_frames.png"
     x, y = get_frame_difference(video)
     fig, ax = plt.subplots()
     ax.plot(x, y)
@@ -59,7 +60,7 @@ def plot_changes(video):
            title='Frame differences over time')
     ax.grid()
 
-    fig.savefig(plotname)
+    fig.savefig(os.path.join(outputdir,plotname))
     # plt.show()
 
 
@@ -73,6 +74,7 @@ def get_key_frames(video):
     x, y = get_frame_difference(video)
     diff = list(zip(y, x))
     # These are hardcoded figures, you may need to adjust (e.g. 15,25)
+    # peaks = signal.find_peaks_cwt(y, np.arange(1, 15))
     peaks = signal.find_peaks_cwt(y, np.arange(1, 15))
     first = peaks[0]
     neg = [1-n for n in y[first:]]
@@ -82,7 +84,7 @@ def get_key_frames(video):
     return frames
 
 
-def save_key_frames(video):
+def save_key_frames(video, outputdir):
     """
     Saves the frames that are estimated holds as image files and
     returns a list of their names (NB: only frames in the first half
@@ -90,7 +92,8 @@ def save_key_frames(video):
     to constitute final rest position)
 
     """
-    outfile = video.split(".")[0]
+    # looks like the issue might be that the videos are in another directory
+    outfile = os.path.splitext(os.path.basename(video))[0]
     all_frames = get_key_frames(video)
     # frames = all_frames # Uncomment if you want all key frames to be included
     # Comment out if you want all key frames included
@@ -102,7 +105,7 @@ def save_key_frames(video):
         v.set(1, f-1)
         ret, frame = v.read()
         filename = outfile+"_frame"+str(count)+".jpg"
-        cv2.imwrite(filename, frame)
+        cv2.imwrite(os.path.join(outputdir, filename), frame)
         filenames.append(filename)
         count += 1
     return filenames
@@ -121,12 +124,12 @@ def make_overlay(a, b, outname):
     os.system(string)
 
 
-def make_images(video):
+def make_images(video, outputdir):
     """Creates overlay images of relevant key frames generated from
     videos and deletes individual frames
 
     """
-    imgs = save_key_frames(video)
+    imgs = save_key_frames(video, outputdir)
     outname = imgs[0].split("_")[0]+"_still.jpg"
     if len(imgs) == 1:
         os.system("mv %s %s" % (imgs[0], outname))
@@ -147,17 +150,20 @@ def make_images(video):
 
 @plac.annotations(inputdir=('path to the directory containing video files to process.'
                             ' Output files will be written to this same directory.',
-                            'positional'))
-def main(inputdir="./videos"):
+                            'positional'),
+                  outputdir=('path to directory into which to place results', 'positional'))
+def main(inputdir="./videos", outputdir=None):
     """
     Iterates over files in directory and creates overlay images of key frames for each .mp4 file
     """
-    for f in os.listdir(inputdir):
-        if f.endswith(".m4v"):
-            make_images(f)
-            # plot_changes(f) # Uncomment if you want to create plots of changes in-between frames
+    if not outputdir:
+        outputdir = inputdir
+    vid_files = [os.path.join(inputdir, f) for f in os.listdir(inputdir) if f.endswith('.m4v')]
+    for f in vid_files:
+        print("file: %s" % f)
+        plot_changes(f, outputdir) # Uncomment if you want to create plots of changes in-between frames
+        make_images(f, outputdir)
 
 
 if __name__ == "__main__":
-        import plac
-        plac.cal(main)
+    plac.call(main)
