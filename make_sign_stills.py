@@ -1,12 +1,32 @@
 import cv2
-import sys
+# import sys
+import logging
 import math
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import plac
 from scipy import signal
-from PIL import Image
+# from PIL import Image
+
+from wand.image import Image, COMPOSITE_OPERATORS
+from wand.drawing import Drawing
+from wand.display import display
+from wand.compat import nested
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(name)s - %(asctime)-14s %(levelname)-8s: %(message)s',
+                              "%m-%d %H:%M:%S")
+
+ch.setFormatter(formatter)
+
+logger.handlers = []  # in case module is reload()'ed, start with no handlers
+logger.addHandler(ch)
 
 
 def hist(img):
@@ -60,31 +80,52 @@ def plot_changes(video, outputdir):
            title='Frame differences over time')
     ax.grid()
 
-    fig.savefig(os.path.join(outputdir,plotname))
+    fig.savefig(os.path.join(outputdir, plotname))
     # plt.show()
 
 
-def get_key_frames(video):
-    """
-    Reads through the frame differences of a video, assumes the first
+def get_key_frames(video, ignore_tail=0.5, show=False):
+    """Reads through the frame differences of a video, assumes the first
     peak to be the start of the sign, then returns the negative peaks
     (i.e. estimated holds) of the remaining frames
 
+    Args:
+        video (str): path to video file
+        ignore_tail (float): fraction of peaks to ignore (i.e. not
+        include in key frames) from the tail end of the
+        video. `ignore_tail=0` means include all peaks,
+        `ignore_tail=0.4` means ignore the last 40% of peaks. Rounding
+        is applied in a conservative manner (i.e. include more peaks
+        rather than less)
+
     """
     x, y = get_frame_difference(video)
-    diff = list(zip(y, x))
+    # diff = list(zip(y, x))
+
     # These are hardcoded figures, you may need to adjust (e.g. 15,25)
-    # peaks = signal.find_peaks_cwt(y, np.arange(1, 15))
+    # peaks = signal.find_peaks_cwt(y, np.arange(1, 15)) # Calle's defaults
     peaks = signal.find_peaks_cwt(y, np.arange(1, 15))
     first = peaks[0]
+    msg = 'peak frames: {}'.format(peaks)
+    logger.debug(msg)
     neg = [1-n for n in y[first:]]
     # These are hardcoded figures, you may need to adjust (e.g. 15,45)
-    peaks2 = signal.find_peaks_cwt(neg, np.arange(1.5, 8))
+    # peaks2 = signal.find_peaks_cwt(neg, np.arange(1.5, 8)) # Calle's defaults
+    # peaks2 = signal.find_peaks_cwt(neg, np.arange(1, 8))
+    peaks2 = signal.find_peaks_cwt(neg, np.arange(1, 8))
+    msg = 'negative peak frames: {}'.format([peak+first for peak in peaks2])
+    logger.debug(msg)
     frames = [peak+first for peak in peaks2]
-    return frames
+    tail_frames = frames[math.floor(len(frames) * (1-ignore_tail)):]
+    logger.debug('tail frames: {}'.format(tail_frames))
+    key_frames = [f for f in frames if f not in tail_frames]
+    logger.debug('key frames: {}'.format(key_frames))
+    if show:
+        play_video(video, peaks, key_frames, tail_frames)
+    return key_frames
 
 
-def save_key_frames(video, outputdir):
+def save_key_frames(video, outputdir, ignore_tail, show=False):
     """
     Saves the frames that are estimated holds as image files and
     returns a list of their names (NB: only frames in the first half
@@ -94,10 +135,10 @@ def save_key_frames(video, outputdir):
     """
     # looks like the issue might be that the videos are in another directory
     outfile = os.path.splitext(os.path.basename(video))[0]
-    all_frames = get_key_frames(video)
-    # frames = all_frames # Uncomment if you want all key frames to be included
+    all_frames = get_key_frames(video, ignore_tail, show)
+    frames = all_frames  # Uncomment if you want all key frames to be included
     # Comment out if you want all key frames included
-    frames = all_frames[:math.ceil(len(all_frames)/2)]
+    # frames = all_frames[:math.ceil(len(all_frames)/2)]
     count = 1
     filenames = []
     for f in frames:
@@ -112,57 +153,170 @@ def save_key_frames(video, outputdir):
 
 
 def make_overlay(a, b, outname):
+    """Makes an overlay image of two key frames
+
+    Using ImageMagick and the Wand python bindings
     """
-    Makes an overlay image of the key frames
-    """
-    new_im = outname
-    img1 = a
-    img2 = b
-    string = "convert %s %s -alpha set \
-    -compose dissolve -define compose:args='25' \
-    -gravity Center -composite %s" % (img2, img1, new_im)
-    os.system(string)
+    logger.debug("entering make_overlay with a: {},"
+                 " b: {}, outname: {}".format(a, b, outname))
+    bot = Image(filename=a)
+    top = Image(filename=b)
+
+    with nested(bot, top) as (b, t):
+        t.transparentize(0.5)
+        b.composite_channel("all_channels", t, "dissolve",
+                            math.floor(b.width/2) - math.floor(t.width/2),
+                            math.floor(b.height/2) - math.floor(t.height/2))
+        b.save(filename=outname)
+    logger.debug("leaving make_overlay")
 
 
-def make_images(video, outputdir):
+def make_images(video, outputdir, ignore_tail, show=False, debug=False):
     """Creates overlay images of relevant key frames generated from
     videos and deletes individual frames
 
     """
-    imgs = save_key_frames(video, outputdir)
+    imgs = save_key_frames(video, outputdir, ignore_tail, show)
+    imgs = [os.path.join(outputdir, f) for f in imgs]
     outname = imgs[0].split("_")[0]+"_still.jpg"
+    logger.debug("from make_images, outname: %s" % outname)
+    logger.debug("from make_images, len(imgs): %s, imgs %s" % (len(imgs), imgs))
     if len(imgs) == 1:
         os.system("mv %s %s" % (imgs[0], outname))
     elif len(imgs) == 2:
         make_overlay(imgs[0], imgs[1], outname)
     elif len(imgs) >= 3:
         ims = imgs[:3]
-        out1 = outname.split(".")[0]+"_A"+".jpg"
+        out1 = (os.path.splitext(outname)[0]
+                + "_A" + os.path.splitext(outname)[1])
+        logger.debug("from make_images, ims[0]: %s" % ims[0])
+        logger.debug("from make_images, ims[1]: %s" % ims[1])
+        logger.debug("from make_images, out1: %s" % out1)
         make_overlay(ims[0], ims[1], out1)
         make_overlay(out1, ims[2], outname)
-    if len(imgs) > 1:
-        for img in imgs:
-            os.system("rm "+img)
-    for f in os.listdir():
-        if f.endswith("_A.jpg") or f.endswith("_B.jpg"):
-            os.system("rm "+f)
+    if not debug:
+        if len(imgs) > 1:
+            for img in imgs:
+                os.system("rm "+img)
+        for f in [os.path.join(outputdir, f) for f in os.listdir(outputdir)]:
+            if f.endswith("_A.jpg") or f.endswith("_B.jpg"):
+                os.system("rm "+f)
+
+
+def play_video(video, green_frames=None, yellow_frames=None, red_frames=None):
+    """plays a video, pausing and color-coding the detected key frames
+
+    Args:
+        video (str): path to video file
+        green_frames, yellow_frames, red_frames (list of int): index of
+            frames belonging to each class. These frames will be rendered
+            in green, yellow, and red, respectively.
+
+    """
+    if green_frames is None:
+        green_frames = []
+    if yellow_frames is None:
+        yellow_frames = []
+    if red_frames is None:
+        red_frames = []
+
+    vid_name = os.path.basename(video)
+    # play video at full speed
+    cap = cv2.VideoCapture(video)
+    while(cap.isOpened()):
+        ret, frame = cap.read()
+        if not ret:
+            break
+        cv2.imshow(vid_name, frame)
+        if cv2.waitKey(30) & 0xFF == ord('q'):
+            break
+    cap.release()
+    cv2.destroyAllWindows()
+
+    # play video while signaling key frames
+    cap = cv2.VideoCapture(video)
+    i = 0
+    while(cap.isOpened()):
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if i in green_frames:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blank = np.zeros_like(gray)
+            green_frame = cv2.merge([blank, gray, blank])
+            cv2.imshow(vid_name, green_frame)
+            if cv2.waitKey(200) & 0xFF == ord('q'):
+                break
+        if i in yellow_frames:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blank = np.zeros_like(gray)
+            yellow_frame = cv2.merge([blank, gray, gray])
+            cv2.imshow(vid_name, yellow_frame)
+            if cv2.waitKey(500) & 0xFF == ord('q'):
+                break
+        if i in red_frames:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blank = np.zeros_like(gray)
+            red_frame = cv2.merge([blank, blank, gray])
+            cv2.imshow(vid_name, red_frame)
+            if cv2.waitKey(200) & 0xFF == ord('q'):
+                break
+        else:
+            cv2.imshow(vid_name, frame)
+            if cv2.waitKey(30) & 0xFF == ord('q'):
+                break
+        i = i + 1
+    cap.release()
+    cv2.destroyAllWindows()
+
+    # play back just the selected frames
+    # cap = cv2.VideoCapture(video)
+    # for f in yellow_frames:
+    #     cap.set(2, f) 
+    #     ret, frame = cap.read()  # this seems to not be reading the key frame
+    #     if not ret:
+    #         break
+    #     cv2.imshow(vid_name, frame)
+    #     if cv2.waitKey(500) & 0xFF == ord('q'):
+    #         break
+    # cap.release()
+    # cv2.destroyAllWindows()
 
 
 @plac.annotations(inputdir=('path to the directory containing video files to process.'
                             ' Output files will be written to this same directory.',
-                            'positional'),
-                  outputdir=('path to directory into which to place results', 'positional'))
-def main(inputdir="./videos", outputdir=None):
+                            'positional', None, str),
+                  outputdir=('path to directory into which to place results', 'positional', None, str),
+                  ignoretail=('fraction of key frames to exclude from tail', 'option'),
+                  debug=('verbose console output', 'flag'),
+                  clean=('clean outputdir of existing .jpg files', 'flag'),
+                  show=('display videos, highlighting key frames as they are calculated', 'flag'))
+def main(inputdir="./videos", outputdir="./output", ignoretail=0.25,
+         debug=False, clean=False, show=False):
     """
     Iterates over files in directory and creates overlay images of key frames for each .mp4 file
     """
     if not outputdir:
         outputdir = inputdir
-    vid_files = [os.path.join(inputdir, f) for f in os.listdir(inputdir) if f.endswith('.m4v')]
+    if debug:
+        ch.setLevel(logging.DEBUG)
+    if not os.path.isdir(outputdir):
+        os.makedirs(outputdir)
+    if clean:
+        jpg_files = [os.path.join(outputdir, f) for
+                     f in os.listdir(outputdir) if f.endswith('.jpg')]
+        if jpg_files:
+            logger.info("removing exisiing jpeeg files")
+        for f in jpg_files:
+            logger.debug("removing {}".format(f))
+            os.remove(f)
+
+    vid_files = [os.path.join(inputdir, f) for f in os.listdir(inputdir)
+                 if f.endswith(('.m4v', '.mov', '.mp4'))]
     for f in vid_files:
-        print("file: %s" % f)
-        plot_changes(f, outputdir) # Uncomment if you want to create plots of changes in-between frames
-        make_images(f, outputdir)
+        logger.info("file: %s" % f)
+        plot_changes(f, outputdir)  # Uncomment to create plots of changes in-between frames
+        make_images(f, outputdir, ignoretail, show, debug)
 
 
 if __name__ == "__main__":
