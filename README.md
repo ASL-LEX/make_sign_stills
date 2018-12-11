@@ -1,5 +1,6 @@
 # Make sign stills
-cloned from Carl Borstell's [Make Sign Stills](https://github.com/borstell/make_sign_stills).
+Cloned from Carl Borstell's [Make Sign
+Stills](https://github.com/borstell/make_sign_stills).
 
 ## Borstell's intro
 Estimates sign holds for sign videos and outputs overlay stills of the sign
@@ -10,5 +11,16 @@ The analysis is a rather crude way of estimating hold phases in the sign. It mak
 
 As a sign video is given to the script, each frame is analyzed and compared pairwise for changes. The first peak (i.e. a lot of changes between frames) is assumed to be the initial transport movement before the sign starts. The script then looks for negative peaks (i.e. small changes ≈ hold phases) and saves these frames as representative phases of the sign. 
 
-## Our work:
-Mostly housekeeping on the script. Added a video play method that highlights the detected key frames during playback, which can help in tuning the parameters of the algorithm.
+## Our work
+Mostly housekeeping on the script. Added a video play method that
+highlights the detected key frames during playback, which can help in
+tuning the parameters of the algorithm.
+
+
+## Getting Started
+1. Clone the repo
+2. Install [ImageMagick
+   v6](https://legacy.imagemagick.org/script/index.php) (there are
+   reports that v7 does nto work with the Wand python bindings
+3. `cd` to the repo directory, and run `pipenv install` (or `pipenv
+   install --skip-lock` to be less strict with version requirements)
