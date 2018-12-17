@@ -28,3 +28,5 @@ command-line-application using plac), but also notably:
    reports that v7 does nto work with the Wand python bindings
 3. `cd` to the repo directory, and run `pipenv install` (or `pipenv
    install --skip-lock` to be less strict with version requirements)
+4. run `pipenv run python make_sign_stills.py -h` to display the 
+   help message, which should be enough to get you started.
