@@ -270,17 +270,17 @@ def play_video(video, green_frames=None, yellow_frames=None, red_frames=None):
     cv2.destroyAllWindows()
 
     # play back just the selected frames
-    # cap = cv2.VideoCapture(video)
-    # for f in yellow_frames:
-    #     cap.set(2, f) 
-    #     ret, frame = cap.read()  # this seems to not be reading the key frame
-    #     if not ret:
-    #         break
-    #     cv2.imshow(vid_name, frame)
-    #     if cv2.waitKey(500) & 0xFF == ord('q'):
-    #         break
-    # cap.release()
-    # cv2.destroyAllWindows()
+    cap = cv2.VideoCapture(video)
+    for f in yellow_frames:
+        cap.set(1, f-1)
+        ret, frame = cap.read()  # this seems to not be reading the key frame
+        if not ret:
+            break
+        cv2.imshow(vid_name, frame)
+        if cv2.waitKey(500) & 0xFF == ord('q'):
+            break
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 @plac.annotations(inputdir=('path to the directory containing video files to process.'
