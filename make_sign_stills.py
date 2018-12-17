@@ -10,8 +10,8 @@ from scipy import signal
 # from PIL import Image
 
 from wand.image import Image, COMPOSITE_OPERATORS
-from wand.drawing import Drawing
-from wand.display import display
+# from wand.drawing import Drawing
+# from wand.display import display
 from wand.compat import nested
 
 
@@ -171,13 +171,37 @@ def make_overlay(a, b, outname):
     logger.debug("leaving make_overlay")
 
 
-def make_images(video, outputdir, ignore_tail, show=False, debug=False):
+def make_gif(images, outname, delay=30):
+    """Makes a .gif animation from frames of a video
+
+    Args:
+        images (list of str): paths to image files
+        delay (int): length of time to display each image (in 1/100sec)
+        outname (str): path to write animation, including .gif extension
+    """
+    with Image() as wand:
+        for f in images:
+            with Image(filename=f) as img:
+                logger.debug("appending %s to wand.sequence" % f)
+                wand.sequence.append(img)
+        for i in range(len(wand.sequence)):
+            with wand.sequence[i] as frame:
+                frame.delay = delay
+        wand.type = 'optimize'
+        logger.debug("saving .gif with filename %s" % outname)
+        wand.save(filename=outname)
+
+
+def make_images(video, outputdir, ignore_tail, show=False, gif=False, debug=False):
     """Creates overlay images of relevant key frames generated from
     videos and deletes individual frames
 
     """
     imgs = save_key_frames(video, outputdir, ignore_tail, show)
     imgs = [os.path.join(outputdir, f) for f in imgs]
+    if gif:
+        logger.debug("calling make_gif(%s, %s)" % (imgs, imgs[0].split("_")[0]+".gif"))
+        make_gif(imgs, imgs[0].split("_")[0]+".gif")
     outname = imgs[0].split("_")[0]+"_still.jpg"
     logger.debug("from make_images, outname: %s" % outname)
     logger.debug("from make_images, len(imgs): %s, imgs %s" % (len(imgs), imgs))
@@ -286,12 +310,14 @@ def play_video(video, green_frames=None, yellow_frames=None, red_frames=None):
 @plac.annotations(inputdir=('path to the directory containing video files to process.'
                             ' Output files will be written to this same directory.',
                             'positional', None, str),
-                  outputdir=('path to directory into which to place results', 'positional', None, str),
+                  outputdir=('path to directory into which to place results', 'positional',
+                             None, str),
                   ignoretail=('fraction of key frames to exclude from tail', 'option'),
+                  gif=('make .gif animation from key frames', 'flag'),
                   debug=('verbose console output', 'flag'),
-                  clean=('clean outputdir of existing .jpg files', 'flag'),
+                  clean=('clean outputdir of existing .jpg  and .gif files', 'flag'),
                   show=('display videos, highlighting key frames as they are calculated', 'flag'))
-def main(inputdir="./videos", outputdir="./output", ignoretail=0.25,
+def main(inputdir="./videos", outputdir="./output", ignoretail=0.25, gif=False,
          debug=False, clean=False, show=False):
     """
     Iterates over files in directory and creates overlay images of key frames for each .mp4 file
@@ -304,9 +330,9 @@ def main(inputdir="./videos", outputdir="./output", ignoretail=0.25,
         os.makedirs(outputdir)
     if clean:
         jpg_files = [os.path.join(outputdir, f) for
-                     f in os.listdir(outputdir) if f.endswith('.jpg')]
+                     f in os.listdir(outputdir) if f.endswith(('.jpg', '.gif'))]
         if jpg_files:
-            logger.info("removing exisiing jpeeg files")
+            logger.info("removing existing .jpg and .gif files")
         for f in jpg_files:
             logger.debug("removing {}".format(f))
             os.remove(f)
@@ -316,7 +342,7 @@ def main(inputdir="./videos", outputdir="./output", ignoretail=0.25,
     for f in vid_files:
         logger.info("file: %s" % f)
         plot_changes(f, outputdir)  # Uncomment to create plots of changes in-between frames
-        make_images(f, outputdir, ignoretail, show, debug)
+        make_images(f, outputdir, ignoretail, show, gif, debug)
 
 
 if __name__ == "__main__":
