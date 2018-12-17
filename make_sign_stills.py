@@ -307,20 +307,30 @@ def play_video(video, green_frames=None, yellow_frames=None, red_frames=None):
     cv2.destroyAllWindows()
 
 
-@plac.annotations(inputdir=('path to the directory containing video files to process.'
-                            ' Output files will be written to this same directory.',
+@plac.annotations(inputdir=('path to the directory containing video files to process '
+                            '(in .m4v, .mov, or .mp4 format).',
                             'positional', None, str),
                   outputdir=('path to directory into which to place results', 'positional',
                              None, str),
                   ignoretail=('fraction of key frames to exclude from tail', 'option'),
                   gif=('make .gif animation from key frames', 'flag'),
-                  debug=('verbose console output', 'flag'),
                   clean=('clean outputdir of existing .jpg  and .gif files', 'flag'),
-                  show=('display videos, highlighting key frames as they are calculated', 'flag'))
+                  show=('display videos, highlighting key frames as they are calculated', 'flag'),
+                  debug=('verbose console output', 'flag'))
 def main(inputdir="./videos", outputdir="./output", ignoretail=0.25, gif=False,
-         debug=False, clean=False, show=False):
-    """
-    Iterates over files in directory and creates overlay images of key frames for each .mp4 file
+         clean=False, show=False, debug=False):
+    """Estimates sign holds for sign videos and creates overlay stills of the sign
+
+    Processes all .m4v, .mov, and .mp4 videos in a given input
+    directory, creating composite overlay images of key hold frames,
+    and optionally creating .gif animations of the hold frames.
+
+    Output files are named according to the filename of the input
+    video, with composite images named [vidname]_still.jpg, and .gif
+    animations named [vidname].gif. Individual still images are named
+    [vidname]_frame[n].jpg, where n is the 1-based index of the image
+    in the sequence
+
     """
     if not outputdir:
         outputdir = inputdir
