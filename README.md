@@ -12,9 +12,13 @@ The analysis is a rather crude way of estimating hold phases in the sign. It mak
 As a sign video is given to the script, each frame is analyzed and compared pairwise for changes. The first peak (i.e. a lot of changes between frames) is assumed to be the initial transport movement before the sign starts. The script then looks for negative peaks (i.e. small changes ≈ hold phases) and saves these frames as representative phases of the sign. 
 
 ## Our work
-Mostly housekeeping on the script. Added a video play method that
-highlights the detected key frames during playback, which can help in
-tuning the parameters of the algorithm.
+Mostly housekeeping on the script (to turn it into a
+command-line-application using plac), but also notably:
+
+- Added a video play method that highlights the detected key frames
+  during playback, which can help in tuning the parameters of the
+  algorithm.
+- Added .gif creation
 
 
 ## Getting Started
