@@ -1,14 +1,28 @@
 import math
 import os
 import plac
+import logging
 
 import cv2
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(name)s - %(asctime)-14s %(levelname)-8s: %(message)s',
+                              "%m-%d %H:%M:%S")
+
+ch.setFormatter(formatter)
+
+logger.handlers = []  # in case module is reload()'ed, start with no handlers
+logger.addHandler(ch)
 
 
 def save_median_frame(video, outputdir):
     """Saves the median frame of the video as a JPEG
-    
-    Args: 
+
+    Args:
         video (str): path to video file
 
     Returns:
@@ -21,7 +35,7 @@ def save_median_frame(video, outputdir):
     filename = os.path.splitext(os.path.basename(video))[0]+"_median_frame.jpg"
     cv2.imwrite(os.path.join(outputdir, filename), frame)
     cap.release()
-    return(os.path.join(outputdir,filename))
+    return(os.path.join(outputdir, filename))
     
     
 
@@ -34,22 +48,40 @@ def get_num_frames(video):
 
 
 
-@plac.annotations(inputdir=('path to the directory containing video files to process.'
-                            ' Output files will be written to this same directory.',
-                            'positional'),
-                  outputdir=('path to directory into which to place results', 'positional'))
-def main(inputdir="./videos", outputdir=None):
+@plac.annotations(inputdir=('path to the directory containing video files to process '
+                            '(in .m4v, .mov, or .mp4 format).',
+                            'positional', None, str),
+                  outputdir=('path to directory into which to place results', 'positional',
+                             None, str),
+                  clean=('clean outputdir of existing .jpg  and .gif files', 'flag'))
+def main(inputdir="./videos", outputdir=None, clean=False):
     """
-    Iterates over files in directory and creates overlay images of key frames for each .mp4 file
+    Iterates over files in directory and creates a still image from the median frame of the video
+
+    Processes all .m4v, .mov, and .mp4 videos in a given input
+    directory
+
     """
     if not outputdir:
         outputdir = inputdir
-    vid_files = [os.path.join(inputdir, f) for f in os.listdir(inputdir) if f.endswith('.m4v')]
+    if not os.path.isdir(outputdir):
+        os.makedirs(outputdir)
+    if clean:
+        jpg_files = [os.path.join(outputdir, f) for
+                     f in os.listdir(outputdir) if f.endswith(('.jpg', '.gif'))]
+        if jpg_files:
+            logger.info("removing existing .jpg and .gif files")
+        for f in jpg_files:
+            logger.debug("removing {}".format(f))
+            os.remove(f)
+
+    vid_files = [os.path.join(inputdir, f) for
+                 f in os.listdir(inputdir) if f.endswith(('.m4v', '.mov', '.mp4'))]
     for f in vid_files:
-        print("file: %s" % f)
-        print("%s: num_frames %s" % (f, get_num_frames(f)))
+        logger.debug("file: %s" % f)
+        logger.debug("%s: num_frames %s" % (f, get_num_frames(f)))
         outfile = save_median_frame(f, outputdir)
-        print("wrote %s" % outfile)
+        logger.info("wrote %s" % outfile)
 
 
 if __name__ == "__main__":
